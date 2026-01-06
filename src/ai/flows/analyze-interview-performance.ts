@@ -37,7 +37,7 @@ const prompt = ai.definePrompt({
   name: 'analyzeInterviewPerformancePrompt',
   input: {schema: AnalyzeInterviewPerformanceInputSchema},
   output: {schema: AnalyzeInterviewPerformanceOutputSchema},
-  model: googleAI.model('gemini-pro'),
+  model: googleAI.model('gemini-1.5-flash'),
   prompt: `You are an expert interview analyst. Analyze the interview transcript, resume, and job description to provide detailed feedback.
 
 Job Description: {{{jobDescription}}}
