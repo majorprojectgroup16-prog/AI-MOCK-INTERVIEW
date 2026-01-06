@@ -11,26 +11,21 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowRight, Bot, Loader2, User } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-
-const interviewQuestions = [
-  'Tell me about yourself.',
-  'What are your biggest strengths?',
-  'What are your biggest weaknesses?',
-  'Why are you interested in this role?',
-  'Where do you see yourself in five years?',
-];
+import { simulateInterview } from '@/ai/flows/simulate-interview';
 
 export default function InterviewSessionPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [jobDescription, setJobDescription] = useState('');
   const [resume, setResume] = useState('');
+  const [interviewQuestions, setInterviewQuestions] = useState<string[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [feedback, setFeedback] = useState('');
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [areQuestionsLoading, setAreQuestionsLoading] = useState(true);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -51,6 +46,32 @@ export default function InterviewSessionPage() {
       setIsInitialized(true);
     }
   }, [router, toast]);
+
+  useEffect(() => {
+    if (isInitialized) {
+      const getQuestions = async () => {
+        try {
+          setAreQuestionsLoading(true);
+          const result = await simulateInterview({
+            jobDescription,
+            resume,
+          });
+          setInterviewQuestions(result.questions);
+        } catch (error) {
+          console.error('Error getting interview questions:', error);
+          toast({
+            variant: 'destructive',
+            title: 'AI Error',
+            description: 'Could not generate interview questions. Please try again.',
+          });
+          router.push('/interview');
+        } finally {
+          setAreQuestionsLoading(false);
+        }
+      };
+      getQuestions();
+    }
+  }, [isInitialized, jobDescription, resume, router, toast]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -117,8 +138,14 @@ export default function InterviewSessionPage() {
     router.push('/interview/report');
   };
 
-  if (!isInitialized) {
-    return <div className="flex-1 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  if (!isInitialized || areQuestionsLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <h2 className="text-xl font-semibold">Generating your interview questions...</h2>
+        <p className="text-muted-foreground">The AI is tailoring questions for you.</p>
+      </div>
+    );
   }
 
   return (
