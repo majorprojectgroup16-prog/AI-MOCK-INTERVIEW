@@ -41,13 +41,14 @@ export default function InterviewSessionPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [hasMicrophonePermission, setHasMicrophonePermission] = useState(false);
   const recognitionRef = useRef<any>(null);
-  const recordingShouldBeOn = useRef(false);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Text to Speech function
   const speak = useCallback((text: string) => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
+      // Cancel any ongoing speech before starting a new one
+      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       // You can configure voice, rate, pitch etc. here if needed
       // const voices = window.speechSynthesis.getVoices();
@@ -124,27 +125,19 @@ export default function InterviewSessionPage() {
 
         recognition.onerror = (event: any) => {
           console.error('Speech recognition error', event.error);
-          // The 'no-speech' error is common and occurs when the user is silent.
-          // We don't want to show an error toast for this, as it's disruptive.
-          if (event.error !== 'no-speech') {
+          if (event.error !== 'no-speech' && event.error !== 'aborted') {
             toast({
               variant: 'destructive',
               title: 'Speech Error',
               description: `An error occurred with speech recognition: ${event.error}`,
             });
-            setIsRecording(false);
-            recordingShouldBeOn.current = false;
           }
+          // Always set recording to false on error to allow restart
+          setIsRecording(false);
         };
         
         recognition.onend = () => {
-          // Restart recognition only if it was supposed to be on.
-          // This prevents it from restarting after a manual stop.
-          if (recordingShouldBeOn.current) {
-             recognition.start();
-          } else {
-            setIsRecording(false);
-          }
+          setIsRecording(false);
         };
 
         recognitionRef.current = recognition;
@@ -171,13 +164,21 @@ export default function InterviewSessionPage() {
     }
 
     if (isRecording) {
-      recordingShouldBeOn.current = false;
       recognitionRef.current.stop();
       setIsRecording(false);
     } else {
-      recordingShouldBeOn.current = true;
-      recognitionRef.current.start();
-      setIsRecording(true);
+      try {
+        recognitionRef.current.start();
+        setIsRecording(true);
+      } catch(e) {
+        // This catch block handles cases where start() is called on an already active recognition.
+        // It might happen in rare race conditions.
+        console.error("Could not start speech recognition:", e);
+        if (e instanceof Error && e.name === 'InvalidStateError') {
+          // It's already started, so we just ensure our state is correct.
+          setIsRecording(true);
+        }
+      }
     }
   };
 
@@ -282,7 +283,6 @@ export default function InterviewSessionPage() {
         window.speechSynthesis.cancel();
     }
     if (isRecording && recognitionRef.current) {
-        recordingShouldBeOn.current = false;
         recognitionRef.current.stop();
         setIsRecording(false);
     }
@@ -401,5 +401,3 @@ export default function InterviewSessionPage() {
     </div>
   );
 }
-
-    
