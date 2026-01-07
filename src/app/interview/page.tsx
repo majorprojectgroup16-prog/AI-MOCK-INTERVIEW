@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import { useAuth, useUser, useFirestore } from '@/firebase';
-import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -18,11 +18,15 @@ import {
 } from '@/components/ui/form';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import { errorEmitter } from '@/firebase/error-emitter';
-import { FirestorePermissionError } from '@/firebase/errors';
+import * as pdfjs from 'pdfjs-dist';
+
+// pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
 
 
 const formSchema = z.object({
@@ -39,6 +43,7 @@ export default function InterviewSetupPage() {
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -69,6 +74,54 @@ export default function InterviewSetupPage() {
       form.setValue('resume', storedResume);
     }
   }, [form]);
+
+  const handleFileChange = async (file: File | null, fieldName: 'jobDescription' | 'resume') => {
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid File Type',
+        description: 'Please upload a PDF file.',
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    toast({ title: 'Processing PDF...', description: 'Extracting text from the document.' });
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        if (!event.target?.result) return;
+        const typedArray = new Uint8Array(event.target.result as ArrayBuffer);
+        const pdf = await pdfjs.getDocument(typedArray).promise;
+        let text = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          text += content.items.map((item: any) => item.str).join(' ');
+        }
+        form.setValue(fieldName, text);
+        toast({
+          variant: 'default',
+          title: 'Success',
+          description: `Extracted text from ${file.name}.`,
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (error) {
+      console.error('Error processing PDF:', error);
+      toast({
+        variant: 'destructive',
+        title: 'PDF Processing Error',
+        description: 'Could not extract text from the PDF. Please try again or paste the text manually.',
+      });
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!user) {
@@ -120,54 +173,96 @@ export default function InterviewSetupPage() {
         <CardHeader>
           <CardTitle className="text-2xl font-headline">Prepare Your Interview</CardTitle>
           <CardDescription>
-            Paste the job description and your resume below to start your personalized mock interview.
+            Provide the job description and your resume to start your personalized mock interview.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              <FormField
-                control={form.control}
-                name="jobDescription"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Job Description</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Paste the full job description here..."
-                        className="min-h-[150px] resize-y"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      This helps us tailor the interview questions to the specific role.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="resume"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Your Resume</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Paste your full resume here..."
-                        className="min-h-[150px] resize-y"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Your resume provides context about your skills and experience.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="submit" size="lg" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isUserLoading}>
-                Start Interview
+              <Tabs defaultValue="text-jd" className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="jobDescription"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Job Description</FormLabel>
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="text-jd">Paste Text</TabsTrigger>
+                        <TabsTrigger value="upload-jd">Upload PDF</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="text-jd">
+                        <FormControl>
+                          <Textarea
+                            placeholder="Paste the full job description here..."
+                            className="min-h-[150px] resize-y"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription className="pt-2">
+                          This helps us tailor the interview questions to the specific role.
+                        </FormDescription>
+                      </TabsContent>
+                      <TabsContent value="upload-jd">
+                        <FormControl>
+                          <Input
+                            type="file"
+                            accept=".pdf"
+                            onChange={(e) => handleFileChange(e.target.files ? e.target.files[0] : null, 'jobDescription')}
+                          />
+                        </FormControl>
+                         <FormDescription className="pt-2">
+                          Upload the job description as a PDF file.
+                        </FormDescription>
+                      </TabsContent>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </Tabs>
+              
+              <Tabs defaultValue="text-resume" className="space-y-4">
+                 <FormField
+                  control={form.control}
+                  name="resume"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Your Resume</FormLabel>
+                       <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="text-resume">Paste Text</TabsTrigger>
+                        <TabsTrigger value="upload-resume">Upload PDF</TabsTrigger>
+                      </TabsList>
+                       <TabsContent value="text-resume">
+                        <FormControl>
+                          <Textarea
+                            placeholder="Paste your full resume here..."
+                            className="min-h-[150px] resize-y"
+                            {...field}
+                          />
+                        </FormControl>
+                         <FormDescription className="pt-2">
+                          Your resume provides context about your skills and experience.
+                        </FormDescription>
+                      </TabsContent>
+                      <TabsContent value="upload-resume">
+                         <FormControl>
+                           <Input
+                            type="file"
+                            accept=".pdf"
+                            onChange={(e) => handleFileChange(e.target.files ? e.target.files[0] : null, 'resume')}
+                          />
+                        </FormControl>
+                         <FormDescription className="pt-2">
+                          Upload your resume as a PDF file.
+                        </FormDescription>
+                      </TabsContent>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </Tabs>
+
+              <Button type="submit" size="lg" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isUserLoading || isProcessing}>
+                {isProcessing ? 'Processing PDF...' : 'Start Interview'}
               </Button>
             </form>
           </Form>
