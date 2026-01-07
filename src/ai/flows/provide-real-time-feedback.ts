@@ -35,7 +35,7 @@ const prompt = ai.definePrompt({
   name: 'provideRealTimeFeedbackPrompt',
   input: {schema: ProvideRealTimeFeedbackInputSchema},
   output: {schema: ProvideRealTimeFeedbackOutputSchema},
-  model: googleAI.model('gemini-1.5-flash'),
+  model: googleAI.model('gemini-2.5-flash'),
   prompt: `You are an AI-powered interview coach providing real-time feedback to a candidate during a mock interview. Consider the job description, the candidate's resume, and their response to the current interview question to provide constructive feedback.
 
 Job Description: {{{jobDescription}}}

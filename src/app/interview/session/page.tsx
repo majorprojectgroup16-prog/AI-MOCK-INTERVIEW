@@ -41,6 +41,7 @@ export default function InterviewSessionPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [hasMicrophonePermission, setHasMicrophonePermission] = useState(false);
   const recognitionRef = useRef<any>(null);
+  const recordingShouldBeOn = useRef(false);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -123,17 +124,26 @@ export default function InterviewSessionPage() {
 
         recognition.onerror = (event: any) => {
           console.error('Speech recognition error', event.error);
-          toast({
-            variant: 'destructive',
-            title: 'Speech Error',
-            description: `An error occurred with speech recognition: ${event.error}`,
-          });
-          setIsRecording(false);
+          // The 'no-speech' error is common and occurs when the user is silent.
+          // We don't want to show an error toast for this, as it's disruptive.
+          if (event.error !== 'no-speech') {
+            toast({
+              variant: 'destructive',
+              title: 'Speech Error',
+              description: `An error occurred with speech recognition: ${event.error}`,
+            });
+            setIsRecording(false);
+            recordingShouldBeOn.current = false;
+          }
         };
         
         recognition.onend = () => {
-          if (isRecording) { // If it stops unexpectedly, try to restart
+          // Restart recognition only if it was supposed to be on.
+          // This prevents it from restarting after a manual stop.
+          if (recordingShouldBeOn.current) {
              recognition.start();
+          } else {
+            setIsRecording(false);
           }
         };
 
@@ -145,7 +155,7 @@ export default function InterviewSessionPage() {
         });
       }
     }
-  }, [toast, isRecording]);
+  }, [toast]);
 
 
   const toggleRecording = () => {
@@ -161,9 +171,11 @@ export default function InterviewSessionPage() {
     }
 
     if (isRecording) {
+      recordingShouldBeOn.current = false;
       recognitionRef.current.stop();
       setIsRecording(false);
     } else {
+      recordingShouldBeOn.current = true;
       recognitionRef.current.start();
       setIsRecording(true);
     }
@@ -270,6 +282,7 @@ export default function InterviewSessionPage() {
         window.speechSynthesis.cancel();
     }
     if (isRecording && recognitionRef.current) {
+        recordingShouldBeOn.current = false;
         recognitionRef.current.stop();
         setIsRecording(false);
     }
@@ -388,3 +401,5 @@ export default function InterviewSessionPage() {
     </div>
   );
 }
+
+    
