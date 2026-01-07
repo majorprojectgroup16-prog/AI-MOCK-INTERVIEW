@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { ArrowRight, Bot, Loader2, User, Mic, MicOff } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { simulateInterview } from '@/ai/flows/simulate-interview';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+
 
 // Declare the speech recognition type for window
 declare global {
@@ -37,6 +39,7 @@ export default function InterviewSessionPage() {
 
   // New state for speech recognition
   const [isRecording, setIsRecording] = useState(false);
+  const [hasMicrophonePermission, setHasMicrophonePermission] = useState(false);
   const recognitionRef = useRef<any>(null);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -71,6 +74,28 @@ export default function InterviewSessionPage() {
       setIsInitialized(true);
     }
   }, [router, toast]);
+  
+  // Request microphone permission on component mount
+  useEffect(() => {
+    const getMicrophonePermission = async () => {
+      if (typeof window !== 'undefined' && 'mediaDevices' in navigator) {
+        try {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+          setHasMicrophonePermission(true);
+        } catch (error) {
+          console.error('Microphone access denied:', error);
+          setHasMicrophonePermission(false);
+          toast({
+            variant: 'destructive',
+            title: 'Microphone Access Denied',
+            description: 'Please enable microphone permissions in your browser settings to use voice input.',
+          });
+        }
+      }
+    };
+    getMicrophonePermission();
+  }, [toast]);
+
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -124,26 +149,23 @@ export default function InterviewSessionPage() {
 
 
   const toggleRecording = () => {
-    if (!recognitionRef.current) return;
+    if (!recognitionRef.current || !hasMicrophonePermission) {
+        if(!hasMicrophonePermission) {
+            toast({
+                variant: 'destructive',
+                title: 'Cannot Record',
+                description: 'Microphone access is not granted.',
+            });
+        }
+        return;
+    }
 
     if (isRecording) {
       recognitionRef.current.stop();
       setIsRecording(false);
     } else {
-      // Ask for permission and start
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(() => {
-          recognitionRef.current.start();
-          setIsRecording(true);
-        })
-        .catch(err => {
-          console.error("Microphone access denied:", err);
-          toast({
-            variant: "destructive",
-            title: "Microphone Access Denied",
-            description: "Please allow microphone access to use voice input.",
-          });
-        });
+      recognitionRef.current.start();
+      setIsRecording(true);
     }
   };
 
@@ -306,6 +328,14 @@ export default function InterviewSessionPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
+                 {!hasMicrophonePermission && (
+                    <Alert variant="destructive">
+                      <AlertTitle>Microphone Access Required</AlertTitle>
+                      <AlertDescription>
+                        Please allow microphone access in your browser to use the voice input feature.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 <div className="relative">
                     <Textarea
                     placeholder="Type your answer or use the microphone to speak..."
@@ -320,6 +350,7 @@ export default function InterviewSessionPage() {
                         onClick={toggleRecording} 
                         className="absolute bottom-3 right-3"
                         aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+                        disabled={!hasMicrophonePermission}
                     >
                         {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
                     </Button>
@@ -357,5 +388,3 @@ export default function InterviewSessionPage() {
     </div>
   );
 }
-
-    
