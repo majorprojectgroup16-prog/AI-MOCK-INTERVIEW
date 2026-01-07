@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { provideRealTimeFeedback } from '@/ai/flows/provide-real-time-feedback';
 import type { TranscriptItem } from '@/lib/types';
@@ -9,9 +9,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowRight, Bot, Loader2, User } from 'lucide-react';
+import { ArrowRight, Bot, Loader2, User, Mic, MicOff } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { simulateInterview } from '@/ai/flows/simulate-interview';
+
+// Declare the speech recognition type for window
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 export default function InterviewSessionPage() {
   const router = useRouter();
@@ -27,7 +35,24 @@ export default function InterviewSessionPage() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [areQuestionsLoading, setAreQuestionsLoading] = useState(true);
 
+  // New state for speech recognition
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  // Text to Speech function
+  const speak = useCallback((text: string) => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      // You can configure voice, rate, pitch etc. here if needed
+      // const voices = window.speechSynthesis.getVoices();
+      // utterance.voice = voices[0];
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    }
+  }, []);
 
   useEffect(() => {
     const storedJD = localStorage.getItem('jobDescription');
@@ -47,6 +72,82 @@ export default function InterviewSessionPage() {
     }
   }, [router, toast]);
 
+  // Initialize Speech Recognition
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event: any) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
+          }
+          // Update the textarea with the final transcript part, appended to existing text
+          setUserAnswer(prevAnswer => prevAnswer + finalTranscript);
+        };
+
+        recognition.onerror = (event: any) => {
+          console.error('Speech recognition error', event.error);
+          toast({
+            variant: 'destructive',
+            title: 'Speech Error',
+            description: `An error occurred with speech recognition: ${event.error}`,
+          });
+          setIsRecording(false);
+        };
+        
+        recognition.onend = () => {
+          if (isRecording) { // If it stops unexpectedly, try to restart
+             recognition.start();
+          }
+        };
+
+        recognitionRef.current = recognition;
+      } else {
+        toast({
+            title: 'Browser Not Supported',
+            description: 'Speech recognition is not supported in your browser.',
+        });
+      }
+    }
+  }, [toast, isRecording]);
+
+
+  const toggleRecording = () => {
+    if (!recognitionRef.current) return;
+
+    if (isRecording) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+    } else {
+      // Ask for permission and start
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(() => {
+          recognitionRef.current.start();
+          setIsRecording(true);
+        })
+        .catch(err => {
+          console.error("Microphone access denied:", err);
+          toast({
+            variant: "destructive",
+            title: "Microphone Access Denied",
+            description: "Please allow microphone access to use voice input.",
+          });
+        });
+    }
+  };
+
+
   useEffect(() => {
     if (isInitialized) {
       const getQuestions = async () => {
@@ -57,6 +158,10 @@ export default function InterviewSessionPage() {
             resume,
           });
           setInterviewQuestions(result.questions);
+          // Speak the first question
+          if (result.questions.length > 0) {
+            speak(result.questions[0]);
+          }
         } catch (error) {
           console.error('Error getting interview questions:', error);
           toast({
@@ -71,7 +176,8 @@ export default function InterviewSessionPage() {
       };
       getQuestions();
     }
-  }, [isInitialized, jobDescription, resume, router, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInitialized, jobDescription, resume, router, toast]); // speak is stable
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -80,6 +186,9 @@ export default function InterviewSessionPage() {
   }, [transcript]);
 
   const handleAnswerSubmit = async () => {
+    if (isRecording) {
+        toggleRecording();
+    }
     if (!userAnswer.trim()) {
       toast({
         variant: 'destructive',
@@ -107,6 +216,7 @@ export default function InterviewSessionPage() {
         userResponse: userAnswer,
       });
       setFeedback(feedbackResult.feedback);
+      speak("Here's some feedback.");
     } catch (error) {
       console.error('Error getting feedback:', error);
       toast({
@@ -122,14 +232,26 @@ export default function InterviewSessionPage() {
 
   const handleNextQuestion = () => {
     if (currentQuestionIndex < interviewQuestions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      const nextQuestionIndex = currentQuestionIndex + 1;
+      setCurrentQuestionIndex(nextQuestionIndex);
       setFeedback('');
+      // Speak the next question
+      speak(interviewQuestions[nextQuestionIndex]);
     } else {
       handleEndInterview();
     }
   };
 
   const handleEndInterview = () => {
+    // Stop any ongoing speech or recording
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+    }
+    if (isRecording && recognitionRef.current) {
+        recognitionRef.current.stop();
+        setIsRecording(false);
+    }
+    
     localStorage.setItem('interviewTranscript', JSON.stringify(transcript));
     toast({
       title: 'Interview Complete',
@@ -184,13 +306,24 @@ export default function InterviewSessionPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <Textarea
-                  placeholder="Type your answer here..."
-                  value={userAnswer}
-                  onChange={(e) => setUserAnswer(e.target.value)}
-                  className="min-h-[150px]"
-                  disabled={isFeedbackLoading}
-                />
+                <div className="relative">
+                    <Textarea
+                    placeholder="Type your answer or use the microphone to speak..."
+                    value={userAnswer}
+                    onChange={(e) => setUserAnswer(e.target.value)}
+                    className="min-h-[150px] pr-12"
+                    disabled={isFeedbackLoading}
+                    />
+                    <Button 
+                        size="icon" 
+                        variant={isRecording ? 'destructive' : 'outline'}
+                        onClick={toggleRecording} 
+                        className="absolute bottom-3 right-3"
+                        aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+                    >
+                        {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+                    </Button>
+                </div>
                 <Button onClick={handleAnswerSubmit} disabled={isFeedbackLoading || !userAnswer} className="w-full">
                   {isFeedbackLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Submit Answer
@@ -224,3 +357,5 @@ export default function InterviewSessionPage() {
     </div>
   );
 }
+
+    
