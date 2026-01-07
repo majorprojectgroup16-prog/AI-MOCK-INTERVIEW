@@ -1,0 +1,251 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user account for the MockInterviewPro platform.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user. (Primary Key)"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the user.",
+          "format": "email"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the user."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user account was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "displayName",
+        "createdAt"
+      ]
+    },
+    "JobDescription": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "JobDescription",
+      "type": "object",
+      "description": "Stores job description details uploaded by the user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the job description. (Primary Key)"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N JobDescription)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the job description."
+        },
+        "content": {
+          "type": "string",
+          "description": "The full text content of the job description."
+        },
+        "uploadDate": {
+          "type": "string",
+          "description": "Timestamp of when the job description was uploaded.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "title",
+        "content",
+        "uploadDate"
+      ]
+    },
+    "Resume": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Resume",
+      "type": "object",
+      "description": "Stores resume details uploaded by the user.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the resume. (Primary Key)"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Resume)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the resume (e.g., filename)."
+        },
+        "content": {
+          "type": "string",
+          "description": "The full text content of the resume."
+        },
+        "uploadDate": {
+          "type": "string",
+          "description": "Timestamp of when the resume was uploaded.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "title",
+        "content",
+        "uploadDate"
+      ]
+    },
+    "InterviewAnalysis": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "InterviewAnalysis",
+      "type": "object",
+      "description": "Stores the analysis and feedback generated after a mock interview.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the interview analysis. (Primary Key)"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N InterviewAnalysis)"
+        },
+        "jobDescriptionId": {
+          "type": "string",
+          "description": "Reference to JobDescription. (Relationship: JobDescription 1:N InterviewAnalysis)"
+        },
+        "resumeId": {
+          "type": "string",
+          "description": "Reference to Resume. (Relationship: Resume 1:N InterviewAnalysis)"
+        },
+        "analysisDate": {
+          "type": "string",
+          "description": "Timestamp of when the analysis was generated.",
+          "format": "date-time"
+        },
+        "strengths": {
+          "type": "string",
+          "description": "A textual description of the user's strengths during the mock interview."
+        },
+        "weaknesses": {
+          "type": "string",
+          "description": "A textual description of the user's weaknesses during the mock interview."
+        },
+        "areasForImprovement": {
+          "type": "string",
+          "description": "A textual description of areas where the user can improve their interview skills."
+        },
+        "transcript": {
+          "type": "string",
+          "description": "The transcript of the mock interview."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "jobDescriptionId",
+        "resumeId",
+        "analysisDate",
+        "strengths",
+        "weaknesses",
+        "areasForImprovement",
+        "transcript"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user account information.  Accessible only to the authenticated user (path-based ownership).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/jobDescriptions/{jobDescriptionId}",
+        "definition": {
+          "entityName": "JobDescription",
+          "schema": {
+            "$ref": "#/backend/entities/JobDescription"
+          },
+          "description": "Stores job descriptions uploaded by the user. Accessible only to the authenticated user (path-based ownership).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            },
+            {
+              "name": "jobDescriptionId",
+              "description": "The unique identifier of the job description."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/resumes/{resumeId}",
+        "definition": {
+          "entityName": "Resume",
+          "schema": {
+            "$ref": "#/backend/entities/Resume"
+          },
+          "description": "Stores resumes uploaded by the user. Accessible only to the authenticated user (path-based ownership).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            },
+            {
+              "name": "resumeId",
+              "description": "The unique identifier of the resume."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/interviewAnalyses/{interviewAnalysisId}",
+        "definition": {
+          "entityName": "InterviewAnalysis",
+          "schema": {
+            "$ref": "#/backend/entities/InterviewAnalysis"
+          },
+          "description": "Stores interview analyses generated for the user. Accessible only to the authenticated user (path-based ownership).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            },
+            {
+              "name": "interviewAnalysisId",
+              "description": "The unique identifier of the interview analysis."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to ensure Authorization Independence, support QAPs (Queries are not Filters), and maintain data clarity.  User data is stored in a path-based structure under `/users/{userId}` for private data. Job Descriptions, Resumes, and Interview Analyses are stored as subcollections to maintain a clear ownership and relationship with the user. This approach allows simple and secure rules based on `request.auth.uid`.  Specifically, each subcollection stores only data owned by the user, supporting QAPs because listing operations don't require filtering. The system avoids `get()` calls in security rules, which contributes to more robust and scalable authorization.\n\nThe design uses Structural Segregation, ensuring that all documents within a collection or subcollection share the same security requirements (e.g., only the owning user can read/write their Job Descriptions). It relies on path-based ownership."
+  }
+}

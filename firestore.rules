@@ -1,0 +1,174 @@
+/**
+ * Core Philosophy: This ruleset enforces a strict user-ownership model where all
+ * data is considered private to the user who created it. Access control is based
+ * on the user's authenticated UID, ensuring that users can only interact with their
+ * own information.
+ *
+ * Data Structure: The database is organized hierarchically with all user-specific
+ * data nested under the /users/{userId} path. This includes the user's profile
+ * as well as subcollections for their job descriptions, resumes, and interview
+ * analyses. This structure is inherently secure and performant for user-scoped
+ * queries.
+ *
+ * Key Security Decisions:
+ * - Default Deny: All access is denied by default.
+ * - Authentication Required: No anonymous access is permitted; all requests must
+ *   come from an authenticated user.
+ * - User Data Privacy: Users can only read, write, and query their own data tree.
+ * - No User Enumeration: The top-level /users collection cannot be listed,
+ *   preventing malicious actors from discovering all registered user IDs.
+ * - Relational Integrity: On document creation, the rules enforce that the
+ *   internal `userId` field matches the user's path, creating a secure link. This
+ *   link is immutable and cannot be changed on update.
+ *
+ * Denormalization for Authorization: This ruleset relies on "path-based
+ * authorization." The user's UID is part of the document path (e.g.,
+ * /users/{userId}/resumes/{resumeId}). This is a highly efficient form of security
+ * that avoids the need for slow and costly `get()` or `exists()` calls to other
+ * documents to verify ownership.
+ *
+ * Structural Segregation: All user data is structurally segregated into private
+ * subcollections under their own unique user path. This design ensures that all
+ * documents within a given collection path share the same simple, strict
+ * security profile (owner-only access), which simplifies rules and enhances query
+ * performance.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ----------------------------------------------------------------------
+    // Helper Functions
+    // ----------------------------------------------------------------------
+
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if the authenticated user's UID matches the userId in the document path.
+     * This is the primary function for enforcing user ownership.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Verifies ownership for an existing document.
+     * CRITICAL: Used for all update and delete operations to prevent modifying or
+     * deleting documents that do not exist.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * On create, validates that the user document's internal `id` field
+     * matches the document's ID in the path ({userId}).
+     * This enforces relational integrity from the moment of creation.
+     */
+    function hasValidUserIdOnCreate(userId) {
+      return request.resource.data.id == userId;
+    }
+
+    /**
+     * On create, validates that a subcollection document's internal `userId`
+     * field matches the parent user's ID in the path ({userId}).
+     * This securely links the subcollection item to its owner.
+     */
+    function hasCorrectOwnerIdOnCreate(userId) {
+      return request.resource.data.userId == userId;
+    }
+    
+    /**
+     * On update, ensures that the document's internal `id` field cannot be changed.
+     * This makes the primary identifier immutable.
+     */
+    function isIdImmutable() {
+      return request.resource.data.id == resource.data.id;
+    }
+
+    /**
+     * On update, ensures that a subcollection document's `userId` field cannot be changed.
+     * This prevents re-assigning the document to a different owner.
+     */
+    function isOwnerIdImmutable() {
+      return request.resource.data.userId == resource.data.userId;
+    }
+
+    // ----------------------------------------------------------------------
+    // Collection Rules
+    // ----------------------------------------------------------------------
+
+    /**
+     * @description Controls access to a user's own profile document.
+     * @path /users/{userId}
+     * @allow (create) A new user with auth.uid='user_abc' creating their own document at /users/user_abc.
+     * @allow (get) An authenticated user with auth.uid='user_abc' reading /users/user_abc.
+     * @deny (list) Any user attempting to list all documents in the /users collection.
+     * @deny (update) A user with auth.uid='user_xyz' trying to update /users/user_abc.
+     * @principle Restricts access to a user's own data tree and prevents user enumeration.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && hasValidUserIdOnCreate(userId);
+      allow update: if isExistingOwner(userId) && isIdImmutable();
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Controls access to job descriptions within a user's private subcollection.
+     * @path /users/{userId}/jobDescriptions/{jobDescriptionId}
+     * @allow (create) A user with auth.uid='user_abc' creating a new job description in their own subcollection.
+     * @allow (list) A user with auth.uid='user_abc' listing all job descriptions in their own subcollection.
+     * @deny (get) A user with auth.uid='user_xyz' trying to read a job description from /users/user_abc/...
+     * @deny (delete) A user trying to delete a job description owned by another user.
+     * @principle Enforces strict document ownership within a user-specific subcollection.
+     */
+    match /users/{userId}/jobDescriptions/{jobDescriptionId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && hasCorrectOwnerIdOnCreate(userId);
+      allow update: if isExistingOwner(userId) && isOwnerIdImmutable();
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Controls access to resumes within a user's private subcollection.
+     * @path /users/{userId}/resumes/{resumeId}
+     * @allow (create) A user with auth.uid='user_abc' creating a new resume in their own subcollection.
+     * @allow (list) A user with auth.uid='user_abc' listing all resumes in their own subcollection.
+     * @deny (get) A user with auth.uid='user_xyz' trying to read a resume from /users/user_abc/...
+     * @deny (delete) A user trying to delete a resume owned by another user.
+     * @principle Enforces strict document ownership within a user-specific subcollection.
+     */
+    match /users/{userId}/resumes/{resumeId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && hasCorrectOwnerIdOnCreate(userId);
+      allow update: if isExistingOwner(userId) && isOwnerIdImmutable();
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Controls access to interview analyses within a user's private subcollection.
+     * @path /users/{userId}/interviewAnalyses/{interviewAnalysisId}
+     * @allow (create) A user with auth.uid='user_abc' creating a new analysis in their own subcollection.
+     * @allow (list) A user with auth.uid='user_abc' listing all analyses in their own subcollection.
+     * @deny (get) A user with auth.uid='user_xyz' trying to read an analysis from /users/user_abc/...
+     * @deny (delete) A user trying to delete an analysis owned by another user.
+     * @principle Enforces strict document ownership within a user-specific subcollection.
+     */
+    match /users/{userId}/interviewAnalyses/{interviewAnalysisId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && hasCorrectOwnerIdOnCreate(userId);
+      allow update: if isExistingOwner(userId) && isOwnerIdImmutable();
+      allow delete: if isExistingOwner(userId);
+    }
+  }
+}
