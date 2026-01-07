@@ -167,16 +167,22 @@ export default function InterviewSessionPage() {
       recognitionRef.current.stop();
       setIsRecording(false);
     } else {
+      // A more robust way to prevent the InvalidStateError
       try {
         recognitionRef.current.start();
         setIsRecording(true);
-      } catch(e) {
-        // This catch block handles cases where start() is called on an already active recognition.
-        // It might happen in rare race conditions.
-        console.error("Could not start speech recognition:", e);
-        if (e instanceof Error && e.name === 'InvalidStateError') {
-          // It's already started, so we just ensure our state is correct.
-          setIsRecording(true);
+      } catch (e) {
+         if (e instanceof Error && e.name === 'InvalidStateError') {
+          // This can happen if recognition is already starting.
+          // We can ignore this, as our state will be synced by onstart.
+          console.log("Speech recognition already starting.");
+        } else {
+          console.error("Could not start speech recognition:", e);
+           toast({
+              variant: 'destructive',
+              title: 'Speech Error',
+              description: 'Could not start voice recording.',
+            });
         }
       }
     }
