@@ -19,11 +19,18 @@ const AnalyzeInterviewPerformanceInputSchema = z.object({
 });
 export type AnalyzeInterviewPerformanceInput = z.infer<typeof AnalyzeInterviewPerformanceInputSchema>;
 
+const PerformanceScoreSchema = z.object({
+  name: z.string().describe('The name of the skill or area being scored (e.g., Clarity, Technical Knowledge).'),
+  score: z.number().min(0).max(100).describe('The score from 0 to 100 for this area.'),
+  justification: z.string().describe('A brief justification for the score.'),
+});
+
 const AnalyzeInterviewPerformanceOutputSchema = z.object({
   strengths: z.string().describe('The strengths demonstrated during the interview.'),
   weaknesses: z.string().describe('The weaknesses demonstrated during the interview.'),
   areasForImprovement: z.string().describe('Areas for improvement based on the interview.'),
   overallFeedback: z.string().describe('Overall feedback on the interview performance.'),
+  scores: z.array(PerformanceScoreSchema).describe('A list of scores for different performance metrics like Clarity, Relevance, and Confidence. Provide 3 to 5 metrics.'),
 });
 export type AnalyzeInterviewPerformanceOutput = z.infer<typeof AnalyzeInterviewPerformanceOutputSchema>;
 
@@ -47,11 +54,7 @@ Resume: {{{resume}}}
 Interview Transcript: {{{interviewTranscript}}}
 
 Provide a structured analysis covering strengths, weaknesses, areas for improvement, and overall feedback.
-
-Strengths:
-Weaknesses:
-Areas for Improvement:
-Overall Feedback:`,
+Also provide a list of 3-5 scores for key performance metrics such as "Clarity", "Relevance", "Confidence", "STAR Method Usage", or "Technical Depth". For each metric, provide a score from 0-100 and a brief justification.`,
 });
 
 const analyzeInterviewPerformanceFlow = ai.defineFlow(

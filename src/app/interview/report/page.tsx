@@ -9,6 +9,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Loader2, ThumbsUp, ThumbsDown, Target, Award } from 'lucide-react';
 import Link from 'next/link';
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { ChartConfig, ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
+
+const chartConfig = {
+  score: {
+    label: 'Score',
+    color: 'hsl(var(--primary))',
+  },
+} satisfies ChartConfig;
 
 export default function ReportPage() {
   const router = useRouter();
@@ -87,6 +96,40 @@ export default function ReportPage() {
         </div>
         
         <div className="space-y-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Performance Metrics</CardTitle>
+                    <CardDescription>A visual breakdown of your performance scores.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
+                        <BarChart accessibilityLayer data={analysis.scores}>
+                            <CartesianGrid vertical={false} />
+                            <XAxis
+                            dataKey="name"
+                            tickLine={false}
+                            tickMargin={10}
+                            axisLine={false}
+                            />
+                            <YAxis domain={[0, 100]} />
+                            <Tooltip
+                                cursor={false}
+                                content={<ChartTooltipContent 
+                                    labelKey="name" 
+                                    formatter={(value, name, payload) => (
+                                        <div>
+                                            <p className="font-medium">{payload.payload.name}: {value}</p>
+                                            <p className="text-sm text-muted-foreground">{payload.payload.justification}</p>
+                                        </div>
+                                    )}
+                                />}
+                            />
+                            <Bar dataKey="score" fill="var(--color-score)" radius={4} />
+                        </BarChart>
+                    </ChartContainer>
+                </CardContent>
+            </Card>
+
           <Card>
             <CardHeader className="flex flex-row items-center gap-4">
               <Award className="w-8 h-8 text-primary" />
