@@ -4,7 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-
+import { useAuth, useUser, useFirestore } from '@/firebase';
+import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -19,6 +20,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
+
 
 const formSchema = z.object({
   jobDescription: z.string().min(50, {
@@ -32,6 +37,8 @@ const formSchema = z.object({
 export default function InterviewSetupPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { user, isUserLoading } = useUser();
+  const firestore = useFirestore();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -40,6 +47,17 @@ export default function InterviewSetupPage() {
       resume: '',
     },
   });
+
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+        router.push('/login');
+        toast({
+            variant: 'destructive',
+            title: 'Unauthorized',
+            description: 'You must be logged in to start an interview.',
+        });
+    }
+  }, [user, isUserLoading, router, toast]);
 
   useEffect(() => {
     const storedJD = localStorage.getItem('jobDescription');
@@ -52,16 +70,42 @@ export default function InterviewSetupPage() {
     }
   }, [form]);
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!user) {
+        toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in.' });
+        return;
+    }
     try {
       localStorage.setItem('jobDescription', values.jobDescription);
       localStorage.setItem('resume', values.resume);
+      
+      const jobDocRef = doc(collection(firestore, `users/${user.uid}/jobDescriptions`));
+      setDocumentNonBlocking(jobDocRef, { 
+          id: jobDocRef.id,
+          userId: user.uid,
+          title: 'Job Description', // You might want a more descriptive title
+          content: values.jobDescription,
+          uploadDate: serverTimestamp(),
+      }, { merge: true });
+      localStorage.setItem('jobDescriptionId', jobDocRef.id);
+
+      const resumeDocRef = doc(collection(firestore, `users/${user.uid}/resumes`));
+      setDocumentNonBlocking(resumeDocRef, { 
+          id: resumeDocRef.id,
+          userId: user.uid,
+          title: 'My Resume', // You might want a more descriptive title
+          content: values.resume,
+          uploadDate: serverTimestamp(),
+      }, { merge: true });
+      localStorage.setItem('resumeId', resumeDocRef.id);
+
       toast({
         title: 'Setup Complete',
         description: 'Your interview session is ready to begin.',
       });
       router.push('/interview/session');
     } catch (error) {
+       console.error("Error saving documents:", error);
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -122,7 +166,7 @@ export default function InterviewSetupPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" size="lg" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+              <Button type="submit" size="lg" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" disabled={isUserLoading}>
                 Start Interview
               </Button>
             </form>

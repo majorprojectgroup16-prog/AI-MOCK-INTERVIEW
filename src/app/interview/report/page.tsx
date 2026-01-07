@@ -11,6 +11,9 @@ import { Loader2, ThumbsUp, ThumbsDown, Target, Award } from 'lucide-react';
 import Link from 'next/link';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { ChartConfig, ChartContainer, ChartTooltipContent } from '@/components/ui/chart';
+import { useUser, useFirestore } from '@/firebase';
+import { collection, doc, serverTimestamp } from 'firebase/firestore';
+import { setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 const chartConfig = {
   score: {
@@ -24,14 +27,24 @@ export default function ReportPage() {
   const { toast } = useToast();
   const [analysis, setAnalysis] = useState<InterviewAnalysis | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { user, isUserLoading } = useUser();
+  const firestore = useFirestore();
 
   useEffect(() => {
+    if (isUserLoading) return;
+    if (!user) {
+        router.push('/login');
+        return;
+    }
+
     const getAnalysis = async () => {
       const jobDescription = localStorage.getItem('jobDescription');
       const resume = localStorage.getItem('resume');
       const transcriptJSON = localStorage.getItem('interviewTranscript');
+      const jobDescriptionId = localStorage.getItem('jobDescriptionId');
+      const resumeId = localStorage.getItem('resumeId');
 
-      if (!jobDescription || !resume || !transcriptJSON) {
+      if (!jobDescription || !resume || !transcriptJSON || !jobDescriptionId || !resumeId) {
         toast({
           variant: 'destructive',
           title: 'Error',
@@ -50,7 +63,32 @@ export default function ReportPage() {
           resume,
           interviewTranscript,
         });
-        setAnalysis(result);
+
+        const analysisDocRef = doc(collection(firestore, `users/${user.uid}/interviewAnalyses`));
+
+        const analysisData: Omit<InterviewAnalysis, 'id'> = {
+            ...result,
+            userId: user.uid,
+            jobDescriptionId,
+            resumeId,
+            analysisDate: new Date().toISOString(),
+            transcript: interviewTranscript,
+        };
+
+        setDocumentNonBlocking(analysisDocRef, analysisData, { merge: true });
+
+        setAnalysis({ ...analysisData, id: analysisDocRef.id });
+
+        // Clean up localStorage
+        localStorage.removeItem('jobDescription');
+        localStorage.removeItem('resume');
+        localStorage.removeItem('interviewTranscript');
+        localStorage.removeItem('jobDescriptionId');
+        localStorage.removeItem('resumeId');
+        
+        // Redirect to the new report page
+        router.replace(`/interview/report/${analysisDocRef.id}`);
+
       } catch (error) {
         console.error('Error getting analysis:', error);
         toast({
@@ -63,9 +101,9 @@ export default function ReportPage() {
       }
     };
     getAnalysis();
-  }, [router, toast]);
+  }, [user, isUserLoading, router, toast, firestore]);
 
-  if (isLoading) {
+  if (isLoading || isUserLoading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -87,111 +125,14 @@ export default function ReportPage() {
     );
   }
   
+  // This part of the component will likely not be reached as it redirects.
+  // It's here as a fallback during the transition.
   return (
     <div className="container py-8 flex-1">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold font-headline text-primary">Interview Performance Report</h1>
-          <p className="text-lg text-muted-foreground mt-2">Here's a breakdown of your performance.</p>
-        </div>
-        
-        <div className="space-y-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Performance Metrics</CardTitle>
-                    <CardDescription>A visual breakdown of your performance scores.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                        <BarChart accessibilityLayer data={analysis.scores}>
-                            <CartesianGrid vertical={false} />
-                            <XAxis
-                            dataKey="name"
-                            tickLine={false}
-                            tickMargin={10}
-                            axisLine={false}
-                            />
-                            <YAxis domain={[0, 100]} />
-                            <Tooltip
-                                cursor={false}
-                                content={<ChartTooltipContent 
-                                    labelKey="name" 
-                                    formatter={(value, name, payload) => (
-                                        <div>
-                                            <p className="font-medium">{payload.payload.name}: {value}</p>
-                                            <p className="text-sm text-muted-foreground">{payload.payload.justification}</p>
-                                        </div>
-                                    )}
-                                />}
-                            />
-                            <Bar dataKey="score" fill="var(--color-score)" radius={4} />
-                        </BarChart>
-                    </ChartContainer>
-                </CardContent>
-            </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-4">
-              <Award className="w-8 h-8 text-primary" />
-              <div>
-                <CardTitle>Overall Feedback</CardTitle>
-                <CardDescription>A summary of your interview.</CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">{analysis.overallFeedback}</p>
-            </CardContent>
-          </Card>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center gap-4">
-                <ThumbsUp className="w-8 h-8 text-green-500" />
-                <div>
-                  <CardTitle>Strengths</CardTitle>
-                  <CardDescription>What you did well.</CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">{analysis.strengths}</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center gap-4">
-                <ThumbsDown className="w-8 h-8 text-red-500" />
-                <div>
-                  <CardTitle>Weaknesses</CardTitle>
-                  <CardDescription>Areas to be mindful of.</CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">{analysis.weaknesses}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center gap-4">
-              <Target className="w-8 h-8 text-accent" />
-              <div>
-                <CardTitle>Areas for Improvement</CardTitle>
-                <CardDescription>Actionable advice for your next interview.</CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">{analysis.areasForImprovement}</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="mt-8 flex justify-center gap-4">
-          <Button asChild>
-            <Link href="/interview">Start a New Interview</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/history">View History</Link>
-          </Button>
+          <p className="text-lg text-muted-foreground mt-2">Redirecting to your saved report...</p>
         </div>
       </div>
     </div>
