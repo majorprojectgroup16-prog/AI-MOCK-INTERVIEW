@@ -36,7 +36,7 @@ const prompt = ai.definePrompt({
   name: 'simulateInterviewPrompt',
   input: {schema: SimulateInterviewInputSchema},
   output: {schema: SimulateInterviewOutputSchema},
-  model: googleAI.model('gemini-2.5-flash'),
+  model: googleAI.model('gemini-1.5-flash'),
   prompt: `You are an AI-powered interview simulator. Your task is to generate a list of relevant interview questions based on the provided job description and candidate's resume.
 
 Job Description: {{{jobDescription}}}
