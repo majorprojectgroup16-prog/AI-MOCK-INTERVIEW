@@ -16,6 +16,7 @@ const AnalyzeInterviewPerformanceInputSchema = z.object({
   jobDescription: z.string().describe('The job description for the role.'),
   resume: z.string().describe('The resume of the candidate.'),
   interviewTranscript: z.string().describe('The transcript of the mock interview.'),
+  extractedSkills: z.array(z.string()).optional().describe('Optional skills extracted by the local model when inputs came from PDFs.'),
 });
 export type AnalyzeInterviewPerformanceInput = z.infer<typeof AnalyzeInterviewPerformanceInputSchema>;
 
@@ -51,9 +52,11 @@ Job Description: {{{jobDescription}}}
 
 Resume: {{{resume}}}
 
+Extracted Skills: {{{extractedSkills}}}
+
 Interview Transcript: {{{interviewTranscript}}}
 
-Provide a structured analysis covering strengths, weaknesses, areas for improvement, and overall feedback.
+Provide a structured analysis covering strengths, weaknesses, areas for improvement, and overall feedback. If extracted skills are present, analyze technical depth and alignment of responses with those skills.
 Also provide a list of 3-5 scores for key performance metrics such as "Clarity", "Relevance", "Confidence", "STAR Method Usage", or "Technical Depth". For each metric, provide a score from 0-100 and a brief justification.`,
 });
 

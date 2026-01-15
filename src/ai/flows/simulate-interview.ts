@@ -20,6 +20,8 @@ const SimulateInterviewInputSchema = z.object({
     .string()
     .describe('The job description for the position being interviewed for.'),
   resume: z.string().describe('The resume of the candidate.'),
+  // Optional extracted skills from a separate model (e.g., when text came from PDF)
+  extractedSkills: z.array(z.string()).optional().describe('Optional list of skills extracted by a local model.'),
 });
 export type SimulateInterviewInput = z.infer<typeof SimulateInterviewInputSchema>;
 
@@ -42,6 +44,10 @@ const prompt = ai.definePrompt({
 Job Description: {{{jobDescription}}}
 
 Resume: {{{resume}}}
+
+Extracted Skills (from local model): {{{extractedSkills}}}
+
+If extracted skills are present, prioritize tailoring technical questions to those skills; otherwise, infer skills from the job description and resume.
 
 Generate a list of 5-7 interview questions. The questions should cover a mix of behavioral, technical (if applicable), and situational topics relevant to the role.
 `,

@@ -102,6 +102,8 @@ export default function InterviewSetupPage() {
           const content = await page.getTextContent();
           text += content.items.map((item: any) => item.str).join(' ');
         }
+        // mark that this field was extracted from a PDF so downstream logic can call the local model
+        localStorage.setItem(`${fieldName}ExtractedFromPdf`, 'true');
         form.setValue(fieldName, text);
         toast({
           variant: 'default',
@@ -196,6 +198,11 @@ export default function InterviewSetupPage() {
                             placeholder="Paste the full job description here..."
                             className="min-h-[150px] resize-y"
                             {...field}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              // mark as not-from-pdf when user types/pastes manually
+                              localStorage.setItem('jobDescriptionExtractedFromPdf', 'false');
+                            }}
                           />
                         </FormControl>
                         <FormDescription className="pt-2">
@@ -237,6 +244,11 @@ export default function InterviewSetupPage() {
                             placeholder="Paste your full resume here..."
                             className="min-h-[150px] resize-y"
                             {...field}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              // mark as not-from-pdf when the user manually edits/pastes the resume
+                              localStorage.setItem('resumeExtractedFromPdf', 'false');
+                            }}
                           />
                         </FormControl>
                          <FormDescription className="pt-2">

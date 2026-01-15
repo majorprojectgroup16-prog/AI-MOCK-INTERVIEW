@@ -19,6 +19,7 @@ const ProvideRealTimeFeedbackInputSchema = z.object({
   resume: z.string().describe('The resume of the user.'),
   userResponse: z.string().describe('The user\'s response to the interview question.'),
   interviewQuestion: z.string().describe('The current interview question being asked.'),
+  extractedSkills: z.array(z.string()).optional().describe('Optional skills extracted by the local model when using PDF inputs.'),
 });
 export type ProvideRealTimeFeedbackInput = z.infer<typeof ProvideRealTimeFeedbackInputSchema>;
 
@@ -36,17 +37,19 @@ const prompt = ai.definePrompt({
   input: {schema: ProvideRealTimeFeedbackInputSchema},
   output: {schema: ProvideRealTimeFeedbackOutputSchema},
   model: googleAI.model('gemini-2.5-flash'),
-  prompt: `You are an AI-powered interview coach providing real-time feedback to a candidate during a mock interview. Consider the job description, the candidate's resume, and their response to the current interview question to provide constructive feedback.
+  prompt: `You are an AI-powered interview coach providing real-time feedback to a candidate during a mock interview. Consider the job description, the candidate's resume, any known extracted skills, and their response to the current interview question to provide constructive feedback.
 
 Job Description: {{{jobDescription}}}
 
 Resume: {{{resume}}}
 
+Extracted Skills: {{{extractedSkills}}}
+
 Interview Question: {{{interviewQuestion}}}
 
 Candidate's Response: {{{userResponse}}}
 
-Provide specific feedback on the clarity, relevance, and completeness of the candidate's response. Suggest areas for improvement, such as elaborating on specific experiences or tailoring the response to better align with the job description. Keep the feedback concise and actionable.
+Provide specific feedback on the clarity, relevance, and completeness of the candidate's response. If extracted skills are present, preferentially reference those skills when suggesting improvements or tailoring examples. Keep the feedback concise and actionable.
 `,
 });
 

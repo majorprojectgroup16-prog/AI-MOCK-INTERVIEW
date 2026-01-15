@@ -34,6 +34,7 @@ export default function InterviewSessionPage() {
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [feedback, setFeedback] = useState('');
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
+  const [extractedSkills, setExtractedSkills] = useState<string[] | undefined>(undefined);
   const [isInitialized, setIsInitialized] = useState(false);
   const [areQuestionsLoading, setAreQuestionsLoading] = useState(true);
 
@@ -99,6 +100,11 @@ export default function InterviewSessionPage() {
   }, [toast]);
 
 
+  // Speech recognition retry state
+  const [speechError, setSpeechError] = useState<string | null>(null);
+  const [speechRetryCount, setSpeechRetryCount] = useState(0);
+  const MAX_SPEECH_RETRIES = 2;
+
   // Initialize Speech Recognition
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -125,13 +131,53 @@ export default function InterviewSessionPage() {
 
         recognition.onerror = (event: any) => {
           console.error('Speech recognition error', event.error);
-          if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          const err = event.error;
+
+          // Handle network errors explicitly with retry and clear guidance
+          if (err === 'network') {
+            setSpeechError('network');
+            toast({
+              variant: 'destructive',
+              title: 'Speech recognition network error',
+              description:
+                'Speech recognition failed due to a network error. Check your internet connection, ensure your browser supports cloud speech services (Chrome), or try typing your answer. Retrying automatically...',
+            });
+
+            // Retry with exponential backoff up to MAX_SPEECH_RETRIES
+            if (speechRetryCount < MAX_SPEECH_RETRIES) {
+              const delay = Math.pow(2, speechRetryCount) * 1000; // 1s, 2s
+              setTimeout(() => {
+                try {
+                  recognition.start();
+                  setIsRecording(true);
+                  setSpeechError(null);
+                  setSpeechRetryCount(prev => prev + 1);
+                  console.log('Retrying speech recognition (attempt)', speechRetryCount + 1);
+                } catch (e) {
+                  console.error('Retry start failed', e);
+                }
+              }, delay);
+            } else {
+              // Give up after retries
+              setIsRecording(false);
+              toast({
+                variant: 'destructive',
+                title: 'Speech recognition unavailable',
+                description: 'Automatic retries failed. Please type your answer or reload the page and try again.',
+              });
+            }
+
+            return;
+          }
+
+          if (err !== 'no-speech' && err !== 'aborted') {
             toast({
               variant: 'destructive',
               title: 'Speech Error',
-              description: `An error occurred with speech recognition: ${event.error}`,
+              description: `An error occurred with speech recognition: ${err}`,
             });
           }
+
           // Always set recording to false on error to allow restart
           setIsRecording(false);
         };
@@ -148,7 +194,7 @@ export default function InterviewSessionPage() {
         });
       }
     }
-  }, [toast]);
+  }, [toast, speechRetryCount]);
 
 
   const toggleRecording = () => {
@@ -167,6 +213,10 @@ export default function InterviewSessionPage() {
       recognitionRef.current.stop();
       setIsRecording(false);
     } else {
+      // Reset retry state whenever user explicitly starts recording
+      setSpeechError(null);
+      setSpeechRetryCount(0);
+
       // A more robust way to prevent the InvalidStateError
       try {
         recognitionRef.current.start();
@@ -194,10 +244,46 @@ export default function InterviewSessionPage() {
       const getQuestions = async () => {
         try {
           setAreQuestionsLoading(true);
+
+          // If either document was extracted from a PDF, call local model to extract skills first
+          const jdFromPdf = localStorage.getItem('jobDescriptionExtractedFromPdf') === 'true';
+          const resumeFromPdf = localStorage.getItem('resumeExtractedFromPdf') === 'true';
+
+          let extractedSkills: string[] | undefined = undefined;
+          if (jdFromPdf || resumeFromPdf) {
+            try {
+              const combinedText = `${jdFromPdf ? jobDescription : ''}\n${resumeFromPdf ? resume : ''}`.trim();
+              const res = await fetch('/api/extract-skills', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: combinedText }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                extractedSkills = Array.isArray(data.skills) ? data.skills : [];
+                setExtractedSkills(extractedSkills);
+                console.log('[session] extracted skills from python backend:', extractedSkills);
+                // show a quick toast so user knows extraction happened
+                if (extractedSkills.length > 0) {
+                  toast({ title: 'Skills extracted', description: extractedSkills.slice(0,5).join(', ') });
+                } else {
+                  toast({ title: 'No skills found', description: 'The extractor did not find explicit skills in the uploaded PDFs.' });
+                }
+              } else {
+                console.warn('Skill extraction API returned non-OK response');
+                toast({ title: 'Skill extraction failed', description: 'Proceeding without extracted skills.' });
+              }
+            } catch (err) {
+              console.error('Error calling skill extraction API:', err);
+            }
+          }
+
           const result = await simulateInterview({
             jobDescription,
             resume,
+            extractedSkills,
           });
+
           setInterviewQuestions(result.questions);
           // Speak the first question
           if (result.questions.length > 0) {
@@ -255,6 +341,7 @@ export default function InterviewSessionPage() {
         resume,
         interviewQuestion: currentQuestion,
         userResponse: userAnswer,
+        extractedSkills,
       });
       setFeedback(feedbackResult.feedback);
       speak("Here's some feedback.");
@@ -374,6 +461,16 @@ export default function InterviewSessionPage() {
                         {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
                     </Button>
                 </div>
+
+                {/* Show small alert when speech network error occurs */}
+                {speechError === 'network' && (
+                  <Alert variant="destructive" className="mt-2">
+                    <AlertTitle>Speech recognition network error</AlertTitle>
+                    <AlertDescription>
+                      Speech recognition is currently unavailable due to a network error. Check your connection or try typing your answer. You can also reload the page to retry.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <Button onClick={handleAnswerSubmit} disabled={isFeedbackLoading || !userAnswer} className="w-full">
                   {isFeedbackLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Submit Answer

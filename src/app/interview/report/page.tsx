@@ -58,10 +58,32 @@ export default function ReportPage() {
         const transcript: TranscriptItem[] = JSON.parse(transcriptJSON);
         const interviewTranscript = transcript.map(item => `${item.speaker === 'user' ? 'Candidate' : 'Interviewer'}: ${item.text}`).join('\n\n');
         
+        // If any of the inputs were extracted from a PDF, call the local extractor
+        let extractedSkills: string[] | undefined = undefined;
+        const jdFromPdf = localStorage.getItem('jobDescriptionExtractedFromPdf') === 'true';
+        const resumeFromPdf = localStorage.getItem('resumeExtractedFromPdf') === 'true';
+        if (jdFromPdf || resumeFromPdf) {
+          try {
+            const combinedText = `${jdFromPdf ? jobDescription : ''}\n${resumeFromPdf ? resume : ''}`.trim();
+            const res = await fetch('/api/extract-skills', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: combinedText }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              extractedSkills = Array.isArray(data.skills) ? data.skills : undefined;
+            }
+          } catch (err) {
+            console.warn('Error calling skill extraction API for analysis:', err);
+          }
+        }
+
         const result = await analyzeInterviewPerformance({
           jobDescription,
           resume,
           interviewTranscript,
+          extractedSkills,
         });
 
         const analysisDocRef = doc(collection(firestore, `users/${user.uid}/interviewAnalyses`));
@@ -85,6 +107,8 @@ export default function ReportPage() {
         localStorage.removeItem('interviewTranscript');
         localStorage.removeItem('jobDescriptionId');
         localStorage.removeItem('resumeId');
+        localStorage.removeItem('jobDescriptionExtractedFromPdf');
+        localStorage.removeItem('resumeExtractedFromPdf');
         
         // Redirect to the new report page
         router.replace(`/interview/report/${analysisDocRef.id}`);

@@ -44,5 +44,18 @@ next-env.d.ts
 firebase-debug.log
 firestore-debug.log
 
-#ml model
-/python-backend
+# python backend - keep source in git, ignore generated artifacts
+# Ignore virtual environments and caches
+python-backend/venv/
+python-backend/.venv/
+python-backend/__pycache__/
+python-backend/*.pyc
+python-backend/.pytest_cache/
+python-backend/.mypy_cache/
+# Ignore environment files and logs
+python-backend/.env
+python-backend/*.log
+# Ignore ML model artifacts (large binaries) - track only if you explicitly want to include them
+python-backend/model/
+
+# previously ignored whole folder; replaced with targeted ignores above
